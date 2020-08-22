@@ -1,14 +1,13 @@
 package lzw
 
 import (
+	"errors"
+	"fmt"
 	"io"
-	"os"
+	"math"
 
 	"github.com/dgryski/go-bitstream"
 )
-
-var codeWidth = 12
-var maxCode int64 = 4095
 
 func check(err error) {
 	if err != nil && err != io.EOF {
@@ -16,38 +15,59 @@ func check(err error) {
 	}
 }
 
-func Compress(inputFname, outputFname string) {
-	table := make(map[string]int64)
-	// initialize with extended ascii
-	for char := 0; char < 256; char++ {
-		table[string(rune(char))] = int64(char)
+// Config Input/Output streams and compression parameters
+type Config struct {
+	r          *bitstream.BitReader
+	w          *bitstream.BitWriter
+	codeWidth  int
+	maxCode    int64
+	dictionary map[string]int64
+}
+
+// SetupConfig Configuration struct for compression/decompression
+func SetupConfig(
+	input io.Reader,
+	output io.Writer,
+	codeWidth int,
+	dictionary map[string]int64,
+) (*Config, error) {
+	conf := new(Config)
+	conf.r = bitstream.NewReader(input)
+	conf.w = bitstream.NewWriter(output)
+	conf.codeWidth = codeWidth
+	conf.maxCode = int64(math.Exp2(float64(codeWidth)))
+	conf.dictionary = dictionary
+	err := error(nil)
+	for key, code := range dictionary {
+		if code > conf.maxCode {
+			msg := fmt.Sprintf("Value for %s is too large for this code width.", key)
+			err = errors.New(msg)
+		}
 	}
 
-	input, err := os.Open(inputFname)
-	check(err)
+	return conf, err
+}
 
-	output, err := os.Create(outputFname)
-	check(err)
-
-	reader := bitstream.NewReader(input)
-	writer := bitstream.NewWriter(output)
+// Compress all input from input and write it to output
+func Compress(conf *Config) {
+	table := conf.dictionary
 
 	var nextCodeToAdd int64 = 256
 	var runningString []byte
-	toAdd, err := reader.ReadByte()
+	toAdd, err := conf.r.ReadByte()
 	check(err)
 	runningString = append(runningString, toAdd)
 
 	for {
-		char, err := reader.ReadByte()
+		char, err := conf.r.ReadByte()
 		if err == io.EOF {
 			finalCode := table[string(runningString)]
 
 			// check for empty file
 			if finalCode != 0 {
-				errw := writer.WriteBits(uint64(finalCode), codeWidth)
+				errw := conf.w.WriteBits(uint64(finalCode), conf.codeWidth)
 				check(errw)
-				errw = writer.Flush(false)
+				errw = conf.w.Flush(false)
 				check(errw)
 			}
 			break
@@ -56,10 +76,10 @@ func Compress(inputFname, outputFname string) {
 		withChar := string(runningString) + string(char)
 		if _, found := table[withChar]; !found {
 			code := table[string(runningString)]
-			err := writer.WriteBits(uint64(code), codeWidth)
+			err := conf.w.WriteBits(uint64(code), conf.codeWidth)
 			check(err)
 
-			if nextCodeToAdd < maxCode {
+			if nextCodeToAdd < conf.maxCode {
 				table[withChar] = nextCodeToAdd
 				nextCodeToAdd++
 			}
@@ -70,27 +90,18 @@ func Compress(inputFname, outputFname string) {
 
 }
 
-func Decompress(inputFname string, outputFname string) {
+// Decompress input from input into output
+func Decompress(conf *Config) {
+	// Inverse config dictionary
 	table := make(map[int64]string)
-	// initialize to extended ascii
-	for code := 0; code < 256; code++ {
-		table[int64(code)] = string(rune(code))
+	for key, val := range conf.dictionary {
+		table[val] = key
 	}
-
-	input, err := os.Open(inputFname)
-	check(err)
-
-	output, err := os.Create(outputFname)
-	check(err)
-
-	reader := bitstream.NewReader(input)
-	writer := bitstream.NewWriter(output)
 
 	var nextCodeToAdd int64 = 256
 
-	lastCodeUns, err := reader.ReadBits(codeWidth)
+	lastCodeUns, err := conf.r.ReadBits(conf.codeWidth)
 	check(err)
-
 	var lastCode int64 = int64(lastCodeUns)
 
 	// empty file
@@ -98,12 +109,12 @@ func Decompress(inputFname string, outputFname string) {
 		return
 	}
 
-	werr := writer.WriteByte(byte(table[lastCode][0]))
+	werr := conf.w.WriteByte(byte(table[lastCode][0]))
 	check(werr)
 	oldCode := lastCode
 
 	for {
-		codeUnsigned, err := reader.ReadBits(codeWidth)
+		codeUnsigned, err := conf.r.ReadBits(conf.codeWidth)
 		if err == io.EOF {
 			break
 		}
@@ -118,10 +129,10 @@ func Decompress(inputFname string, outputFname string) {
 			outputString = table[code]
 		}
 		for _, val := range []byte(outputString) {
-			werr := writer.WriteByte(val)
+			werr := conf.w.WriteByte(val)
 			check(werr)
 		}
-		if nextCodeToAdd < maxCode {
+		if nextCodeToAdd < conf.maxCode {
 			nextStringToAdd := table[oldCode] + string(outputString[0])
 			table[nextCodeToAdd] = nextStringToAdd
 			nextCodeToAdd++

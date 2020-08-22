@@ -9,15 +9,31 @@ import (
 
 func main() {
 	if len(os.Args) < 4 {
-		fmt.Printf("Usage: `go run lzw.go -(d|c) (input_file) (output_file)`")
+		fmt.Printf("Usage:\n `go run (path2command) -(d|c) (input_file) (output_file)`\n")
 		return
 	}
 	opt := os.Args[1]
 	inputFname := os.Args[2]
 	outputFname := os.Args[3]
+
+	input, err := os.Open(inputFname)
+	if err != nil {
+		panic(err)
+	}
+	output, err := os.Create(outputFname)
+	if err != nil {
+		panic(err)
+	}
+
+	table := make(map[string]int64)
+	for code := 0; code < 256; code++ {
+		table[string(rune(code))] = int64(code)
+	}
+
+	conf, _ := lzw.SetupConfig(input, output, 12, table)
 	if opt == "-c" {
-		lzw.Compress(inputFname, outputFname)
+		lzw.Compress(conf)
 	} else if opt == "-d" {
-		lzw.Decompress(inputFname, outputFname)
+		lzw.Decompress(conf)
 	}
 }
