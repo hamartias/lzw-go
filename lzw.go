@@ -9,13 +9,7 @@ import (
 	"github.com/dgryski/go-bitstream"
 )
 
-func check(err error) {
-	if err != nil && err != io.EOF {
-		panic(err)
-	}
-}
-
-// Config Input/Output streams and compression parameters
+// Config encapsulates bitstreams and compression parameters
 type Config struct {
 	r          *bitstream.BitReader
 	w          *bitstream.BitWriter
@@ -24,7 +18,8 @@ type Config struct {
 	dictionary map[string]int64
 }
 
-// SetupConfig Configuration struct for compression/decompression
+// SetupConfig sets up Config struct for compression/decompression with input
+// validation
 func SetupConfig(
 	input io.Reader,
 	output io.Writer,
@@ -48,36 +43,45 @@ func SetupConfig(
 	return conf, err
 }
 
-// Compress all input from input and write it to output
-func Compress(conf *Config) {
+//Compress performs compression according to parameters in Config
+func Compress(conf *Config) error {
 	table := conf.dictionary
 
 	var nextCodeToAdd int64 = 256
 	var runningString []byte
 	toAdd, err := conf.r.ReadByte()
-	check(err)
+	if err != nil {
+		return err
+	}
 	runningString = append(runningString, toAdd)
 
 	for {
 		char, err := conf.r.ReadByte()
 		if err == io.EOF {
 			finalCode := table[string(runningString)]
-
 			// check for empty file
 			if finalCode != 0 {
 				errw := conf.w.WriteBits(uint64(finalCode), conf.codeWidth)
-				check(errw)
+				if errw != nil {
+					return errw
+				}
 				errw = conf.w.Flush(false)
-				check(errw)
+				if errw != nil {
+					return err
+				}
 			}
 			break
 		}
-		check(err)
+		if err != nil {
+			return err
+		}
 		withChar := string(runningString) + string(char)
 		if _, found := table[withChar]; !found {
 			code := table[string(runningString)]
 			err := conf.w.WriteBits(uint64(code), conf.codeWidth)
-			check(err)
+			if err != nil {
+				return err
+			}
 
 			if nextCodeToAdd < conf.maxCode {
 				table[withChar] = nextCodeToAdd
@@ -87,11 +91,11 @@ func Compress(conf *Config) {
 		}
 		runningString = append(runningString, char)
 	}
-
+	return error(nil)
 }
 
-// Decompress input from input into output
-func Decompress(conf *Config) {
+// Decompress performs decompression according to parameters in Config
+func Decompress(conf *Config) error {
 	// Inverse config dictionary
 	table := make(map[int64]string)
 	for key, val := range conf.dictionary {
@@ -101,24 +105,30 @@ func Decompress(conf *Config) {
 	var nextCodeToAdd int64 = 256
 
 	lastCodeUns, err := conf.r.ReadBits(conf.codeWidth)
-	check(err)
+	if err != nil {
+		return err
+	}
 	var lastCode int64 = int64(lastCodeUns)
 
 	// empty file
 	if lastCode == 0 {
-		return
+		return error(nil)
 	}
 
 	werr := conf.w.WriteByte(byte(table[lastCode][0]))
-	check(werr)
+	if werr != nil {
+		return werr
+	}
 	oldCode := lastCode
 
 	for {
 		codeUnsigned, err := conf.r.ReadBits(conf.codeWidth)
+		if err != nil {
+			return err
+		}
 		if err == io.EOF {
 			break
 		}
-		check(err)
 		var code int64 = int64(codeUnsigned)
 
 		var outputString string
@@ -130,7 +140,9 @@ func Decompress(conf *Config) {
 		}
 		for _, val := range []byte(outputString) {
 			werr := conf.w.WriteByte(val)
-			check(werr)
+			if werr != nil {
+				return werr
+			}
 		}
 		if nextCodeToAdd < conf.maxCode {
 			nextStringToAdd := table[oldCode] + string(outputString[0])
@@ -139,4 +151,5 @@ func Decompress(conf *Config) {
 		}
 		oldCode = code
 	}
+	return error(nil)
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/davidcrosby/lzw-go"
@@ -32,8 +33,14 @@ func main() {
 
 	conf, _ := lzw.SetupConfig(input, output, 12, table)
 	if opt == "-c" {
-		lzw.Compress(conf)
+		err := lzw.Compress(conf)
+		if err != nil {
+			log.Fatal(err)
+		}
 	} else if opt == "-d" {
-		lzw.Decompress(conf)
+		err := lzw.Decompress(conf)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 }
