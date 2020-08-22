@@ -1,4 +1,4 @@
-module go/davidcrosby/lzw
+module github.com/davidcrosby/lzw-go
 
 go 1.15
 

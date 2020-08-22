@@ -1,7 +1,6 @@
-package main
+package lzw
 
 import (
-	"fmt"
 	"io"
 	"os"
 
@@ -17,7 +16,7 @@ func check(err error) {
 	}
 }
 
-func compress(inputFname, outputFname string) {
+func Compress(inputFname, outputFname string) {
 	table := make(map[string]int64)
 	// initialize with extended ascii
 	for char := 0; char < 256; char++ {
@@ -71,7 +70,7 @@ func compress(inputFname, outputFname string) {
 
 }
 
-func decompress(inputFname string, outputFname string) {
+func Decompress(inputFname string, outputFname string) {
 	table := make(map[int64]string)
 	// initialize to extended ascii
 	for code := 0; code < 256; code++ {
@@ -128,20 +127,5 @@ func decompress(inputFname string, outputFname string) {
 			nextCodeToAdd++
 		}
 		oldCode = code
-	}
-}
-
-func main() {
-	if len(os.Args) < 4 {
-		fmt.Printf("Usage: `go run lzw.go -(d|c) (input_file) (output_file)`")
-		return
-	}
-	opt := os.Args[1]
-	inputFname := os.Args[2]
-	outputFname := os.Args[3]
-	if opt == "-c" {
-		compress(inputFname, outputFname)
-	} else if opt == "-d" {
-		decompress(inputFname, outputFname)
 	}
 }
