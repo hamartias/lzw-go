@@ -31,7 +31,7 @@ func main() {
 		table[string(rune(code))] = int64(code)
 	}
 
-	conf, _ := lzw.SetupConfig(input, output, 12, table)
+	conf, _ := lzw.SetupConfig(input, output, 20, table)
 	if opt == "-c" {
 		err := lzw.Compress(conf)
 		if err != nil {

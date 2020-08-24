@@ -50,7 +50,7 @@ func Compress(conf *Config) error {
 	var nextCodeToAdd int64 = 256
 	var runningString []byte
 	toAdd, err := conf.r.ReadByte()
-	if err != nil {
+	if err != nil && err != io.EOF {
 		return err
 	}
 	runningString = append(runningString, toAdd)
@@ -62,24 +62,24 @@ func Compress(conf *Config) error {
 			// check for empty file
 			if finalCode != 0 {
 				errw := conf.w.WriteBits(uint64(finalCode), conf.codeWidth)
-				if errw != nil {
+				if errw != nil && err != io.EOF {
 					return errw
 				}
 				errw = conf.w.Flush(false)
-				if errw != nil {
+				if errw != nil && err != io.EOF {
 					return err
 				}
 			}
 			break
 		}
-		if err != nil {
+		if err != nil && err != io.EOF {
 			return err
 		}
 		withChar := string(runningString) + string(char)
 		if _, found := table[withChar]; !found {
 			code := table[string(runningString)]
 			err := conf.w.WriteBits(uint64(code), conf.codeWidth)
-			if err != nil {
+			if err != nil && err != io.EOF {
 				return err
 			}
 
@@ -105,7 +105,7 @@ func Decompress(conf *Config) error {
 	var nextCodeToAdd int64 = 256
 
 	lastCodeUns, err := conf.r.ReadBits(conf.codeWidth)
-	if err != nil {
+	if err != nil && err != io.EOF {
 		return err
 	}
 	var lastCode int64 = int64(lastCodeUns)
@@ -116,14 +116,14 @@ func Decompress(conf *Config) error {
 	}
 
 	werr := conf.w.WriteByte(byte(table[lastCode][0]))
-	if werr != nil {
+	if werr != nil && werr != io.EOF {
 		return werr
 	}
 	oldCode := lastCode
 
 	for {
 		codeUnsigned, err := conf.r.ReadBits(conf.codeWidth)
-		if err != nil {
+		if err != nil && err != io.EOF {
 			return err
 		}
 		if err == io.EOF {
@@ -140,7 +140,7 @@ func Decompress(conf *Config) error {
 		}
 		for _, val := range []byte(outputString) {
 			werr := conf.w.WriteByte(val)
-			if werr != nil {
+			if werr != nil && werr != io.EOF {
 				return werr
 			}
 		}
